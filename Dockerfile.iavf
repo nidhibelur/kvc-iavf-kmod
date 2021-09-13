@@ -1,0 +1,27 @@
+FROM quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:1aa3d1eaae7847eb426267e7cce8d780827508812aa8ee31b73703a4902c8c45
+
+WORKDIR /build/
+
+RUN yum -y install git make sudo gcc wget \
+&& yum clean all \
+&& rm -rf /var/cache/dnf
+
+# Expecting kmod software version as an input to the build
+ARG KMODVER=4.2.7
+
+RUN wget "https://sourceforge.net/projects/e1000/files/iavf%20stable/$KMODVER/iavf-$KMODVER.tar.gz"
+RUN tar zxf iavf-$KMODVER.tar.gz
+WORKDIR /build/iavf-$KMODVER/src
+
+# Prep and build the module
+RUN KVER=$(rpm -q --qf "%{VERSION}-%{RELEASE}.%{ARCH}"  kernel-rt-core) \
+&& BUILD_KERNEL=${KVER} KSRC=/lib/modules/$KVER/build/ make modules_install
+
+# Add the helper tools
+WORKDIR /build
+RUN git clone https://github.com/jianzzha/kvc-iavf-kmod.git
+WORKDIR /build/kvc-iavf-kmod
+RUN mkdir -p /usr/lib/kvc/ && mkdir -p /etc/kvc/ && make install
+
+RUN systemctl enable kmods-via-containers@iavf-kmod
+
